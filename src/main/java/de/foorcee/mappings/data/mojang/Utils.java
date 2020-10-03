@@ -23,11 +23,11 @@ public class Utils {
         main2();
     }
 
-    public void clean(boolean b, String s){
+    public void clean(long l, long l2, long l3, long l4){
 
     }
 
-    public void clean2(boolean b, String s){
-        clean(b, s);
+    public void clean2(long l, long l2, int l3, int l4){
+        clean(l, l2, l3, l4);
     }
 }
