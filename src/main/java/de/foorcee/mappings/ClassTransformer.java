@@ -1,14 +1,13 @@
 package de.foorcee.mappings;
 
 import com.sun.org.apache.bcel.internal.generic.ALOAD;
+import com.sun.org.apache.bcel.internal.generic.ILOAD;
 import cuchaz.enigma.translation.mapping.EntryMapping;
 import cuchaz.enigma.translation.mapping.tree.EntryTreeNode;
 import cuchaz.enigma.translation.representation.TypeDescriptor;
 import cuchaz.enigma.translation.representation.entry.MethodEntry;
-import org.objectweb.asm.ClassReader;
-import org.objectweb.asm.ClassWriter;
-import org.objectweb.asm.Label;
-import org.objectweb.asm.Opcodes;
+import jdk.internal.org.objectweb.asm.util.CheckClassAdapter;
+import org.objectweb.asm.*;
 import org.objectweb.asm.tree.*;
 
 import java.io.*;
@@ -24,16 +23,16 @@ public class ClassTransformer {
 
     public ClassTransformer(Ressource ressource, List<EntryTreeNode<EntryMapping>> list) throws IOException {
 
-        if(list == null) return;
+        if (list == null) return;
         for (EntryTreeNode<EntryMapping> node : list) {
             MethodEntry entry = (MethodEntry) node.getEntry();
-            String id = entry.getName()+entry.getDesc();
+            String id = entry.getName() + entry.getDesc();
             mappings.put(id, node);
         }
 
         ClassWriter classWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS);
         ClassNode classNode = new ClassNode();
-        ClassReader reader =  new ClassReader(ressource.getData());
+        ClassReader reader = new ClassReader(ressource.getData());
         reader.accept(classNode, 0);
 
         boolean modifyed = false;
@@ -41,63 +40,62 @@ public class ClassTransformer {
             MethodNode method = (MethodNode) object;
             String id = method.name + method.desc;
             EntryTreeNode<EntryMapping> node = mappings.get(id);
-            if(node != null){
+            if (node != null) {
                 MethodEntry entry = (MethodEntry) node.getEntry();
                 String deobfuscatedName = node.getValue().getTargetName();
-                if(method.name.equals(deobfuscatedName)) continue;
+                if (method.name.equals(deobfuscatedName)) continue;
 
-                MethodNode methodNode = new MethodNode(method.access,deobfuscatedName, method.desc, method.signature, method.exceptions.toArray(new String[0]));
-//                if(entry.getDesc().getReturnDesc().isVoid() && entry.getDesc().getArgumentDescs().isEmpty()){
-//                    methodNode.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
-//                    methodNode.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, classNode.name, method.name, method.desc, false));
-//                    classNode.methods.add(methodNode);
-//                    modifyed = true;
-//                }
+                if(entry.getDesc().getArgumentDescs().isEmpty()) continue;
 
-                if(Modifier.isAbstract(method.access) || Modifier.isStatic(method.access)) continue;
+                if (Modifier.isAbstract(method.access) || Modifier.isStatic(method.access)) continue;
 
-                if(!entry.getDesc().getArgumentDescs().isEmpty()){
-                    System.out.println(classNode.name +" " + method.name + " ");
-                    for (TypeDescriptor desc : entry.getDesc().getArgumentDescs()) {
-                        System.out.println(desc.toString());
-                    }
-                    for (AbstractInsnNode instruction : method.instructions) {
-                        System.out.println(instruction.getClass());
-                    }
+                MethodVisitor methodNode = classNode.visitMethod(method.access, deobfuscatedName, method.desc, method.signature, method.exceptions.toArray(new String[0]));
+                methodNode.visitCode();
+
+                Label label1 = new Label();
+                methodNode.visitLabel(label1);
+                methodNode.visitVarInsn(Opcodes.ALOAD, 0);
+
+                int index = 1;
+                for (TypeDescriptor desc : entry.getDesc().getArgumentDescs()) {
+                    Type type = Type.getType(desc.toString());
+                    System.out.println(type.getClassName() + " " + desc);
+                    methodNode.visitVarInsn(type.getOpcode(Opcodes.ILOAD), index);
+                    index=index+type.getSize();
                 }
 
-                if(entry.getDesc().getArgumentDescs().isEmpty()){
-                    LabelNode labelNode1 = new LabelNode(new Label());
-                    methodNode.instructions.add(labelNode1);
-                    methodNode.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                System.out.println("desc: " + method.desc);
+                methodNode.visitMethodInsn(Opcodes.INVOKEVIRTUAL, classNode.name, method.name, method.desc, false);
 
-                    methodNode.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, classNode.name, method.name, method.desc, false));
-                    LabelNode labelNode2 = new LabelNode(new Label());
-                    methodNode.instructions.add(labelNode2);
-                    if(entry.getDesc().getReturnDesc().isVoid()){
-                        methodNode.instructions.add(new InsnNode(Opcodes.RETURN));
-                    }else{
-                        methodNode.instructions.add(new InsnNode(Opcodes.IRETURN));
-                    }
-                    LocalVariableNode variableNode = new LocalVariableNode("this", "L" + classNode.name + ";", null, labelNode1, labelNode2, 0);
+                Type returnType = Type.getType(entry.getDesc().getReturnDesc().toString());
+                methodNode.visitInsn(returnType.getOpcode(Opcodes.IRETURN));
 
-                    methodNode.localVariables.add(variableNode);
-                    methodNode.maxStack = 1;
-                    methodNode.maxLocals = 1;
-                    classNode.methods.add(methodNode);
-                    modifyed = true;
-                    System.out.println("+ " +id + " -> " + deobfuscatedName);
+                Label label3 = new Label();
+                methodNode.visitLabel(label3);
+                methodNode.visitLocalVariable("this", "L" + classNode.name + ";", null, label1, label3, 0);
 
+                index = 1;
+                for (TypeDescriptor desc : entry.getDesc().getArgumentDescs()) {
+                    Type type = Type.getType(desc.toString());
+                    System.out.println(type.getClassName() + " " + desc);
+                    methodNode.visitLocalVariable("var"+(index-1), type.getDescriptor(), null, label1, label3, index);
+                    index++;
                 }
+                methodNode.visitMaxs(-1, -1);
+                methodNode.visitEnd();
+
+                modifyed = true;
+                System.out.println("+ " + id + " -> " + deobfuscatedName);
+
             }
         }
 
-        if(!modifyed) return;
+        if (!modifyed) return;
 
         classNode.accept(classWriter);
         File outputDir = new File("test/");
         File file = new File(outputDir, ressource.getSimpleName() + ".class");
-        if(file.exists()) file.delete();
+        if (file.exists()) file.delete();
 
         outputDir.mkdirs();
 
@@ -112,6 +110,9 @@ public class ClassTransformer {
         }
 
         dataOutputStream.write(classWriter.toByteArray());
+
+//        PrintWriter pw = new PrintWriter(System.out);
+//        CheckClassAdapter.verify(new jdk.internal.org.objectweb.asm.ClassReader(classWriter.toByteArray()), true, pw);
         //return classWriter.toByteArray();
     }
 }
