@@ -6,7 +6,7 @@
 
     <groupId>de.foorcee</groupId>
     <artifactId>MojangPaperServer</artifactId>
-    <version>1.0</version>
+    <version>1.1</version>
 
     <repositories>
         <repository>
@@ -73,6 +73,7 @@
     </dependencies>
 
     <build>
+        <finalName>MojangPaperServer</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

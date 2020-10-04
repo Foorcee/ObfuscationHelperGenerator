@@ -17,6 +17,10 @@ public class Main {
         Properties properties = new Properties();
         properties.load(Main.class.getClassLoader().getResourceAsStream("version.properties"));
 
-        new MojangMethodGenerator(properties).load();
+        MojangMethodGenerator generator = new MojangMethodGenerator(properties);
+        generator.load();
+        if(!Boolean.getBoolean("mappings.patchonly")){
+            generator.startServer(args);
+        }
     }
 }
