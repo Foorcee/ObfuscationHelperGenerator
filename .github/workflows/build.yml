@@ -16,5 +16,5 @@ jobs:
         run: mvn clean install --file pom.xml
       - uses: actions/upload-artifact@v2
         with:
-          name: MojangPaperServer-1.0
-          path: target/MojangPaperServer-1.0.jar
+          name: MojangPaperServer
+          path: target/MojangPaperServer.jar
