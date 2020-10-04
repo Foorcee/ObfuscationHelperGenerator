@@ -52,20 +52,20 @@ public class MojangMappings {
             String[] splitt = line.split(" ");
             String mojangClass = mojangClassMappings.get(splitt[0]);
             System.out.println(splitt[1] + " -> " + mojangClass);
-            mojangToBukkitClassNames.put(mojangClass, splitt[1]);
+            mojangToBukkitClassNames.put(splitt[0], splitt[1]);
             classMethodList.put(splitt[1], methodMap.get(mojangClass));
         }
 
-        mojangToBukkitClassNames.forEach((mojang, bukkit) -> {
-            System.out.println("-> " + bukkit);
-            for (EntryTreeNode<EntryMapping> node : methodMap.get(mojang)) {
-                MethodEntry entry = (MethodEntry) node.getEntry();
-                System.out.println("+ " + node.getValue().getTargetName());
-                for (TypeDescriptor desc : entry.getDesc().getArgumentDescs()) {
-//                    System.out.println(desc.toString());
-                }
-            }
-        });
+//        mojangToBukkitClassNames.forEach((mojang, bukkit) -> {
+//            System.out.println("-> " + bukkit);
+//            for (EntryTreeNode<EntryMapping> node : methodMap.get(mojang)) {
+//                MethodEntry entry = (MethodEntry) node.getEntry();
+//                System.out.println("+ " + node.getValue().getTargetName());
+//                for (TypeDescriptor desc : entry.getDesc().getArgumentDescs()) {
+////                    System.out.println(desc.toString());
+//                }
+//            }
+//        });
     }
 
     private static void loadMojangClassNames(EntryTreeNode<EntryMapping> node, Map<String, String> mappings){

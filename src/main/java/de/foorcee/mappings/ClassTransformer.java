@@ -6,6 +6,7 @@ import cuchaz.enigma.translation.mapping.EntryMapping;
 import cuchaz.enigma.translation.mapping.tree.EntryTreeNode;
 import cuchaz.enigma.translation.representation.TypeDescriptor;
 import cuchaz.enigma.translation.representation.entry.MethodEntry;
+import de.foorcee.mappings.data.mojang.MojangMappings;
 import jdk.internal.org.objectweb.asm.util.CheckClassAdapter;
 import org.objectweb.asm.*;
 import org.objectweb.asm.tree.*;
@@ -16,6 +17,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 public class ClassTransformer {
 
@@ -23,10 +25,29 @@ public class ClassTransformer {
 
     public ClassTransformer(Ressource ressource, List<EntryTreeNode<EntryMapping>> list) throws IOException {
 
+//        if(!ressource.getFileName().endsWith("/Entity.class")){
+//            return;
+//        }
+
         if (list == null) return;
+
+        Function<String, String> remapFunction = s -> {
+            String remap = MojangMappings.mojangToBukkitClassNames.get(s);
+            System.out.println("remap: " + s + " ->" + remap);
+            if(remap == null) {
+                return s;
+            }
+            return "net/minecraft/server/v1_16_R2/" + remap;
+        };
+
         for (EntryTreeNode<EntryMapping> node : list) {
             MethodEntry entry = (MethodEntry) node.getEntry();
-            String id = entry.getName() + entry.getDesc();
+            entry.getDesc().getReturnDesc().remap(remapFunction);
+            entry.getDesc().getArgumentDescs().forEach(typeDescriptor -> typeDescriptor.remap(remapFunction));
+            String remappedDesc = entry.getDesc().remap(remapFunction).toString();
+           // System.out.println(ressource.getSimpleName() + " " +entry.getName() + " " + remappedDesc);
+            String id = entry.getName() + remappedDesc;
+            System.out.println("Load id: " + id);
             mappings.put(id, node);
         }
 
@@ -45,7 +66,16 @@ public class ClassTransformer {
                 String deobfuscatedName = node.getValue().getTargetName();
                 if (method.name.equals(deobfuscatedName)) continue;
 
-                if(entry.getDesc().getArgumentDescs().isEmpty()) continue;
+//                for (MethodNode methodNode : classNode.methods) {
+//                    if(methodNode.name.equals(deobfuscatedName)  && methodNode.desc.equals(method.desc)){
+//                        System.out.println("duplicated Method: "+id + " " +deobfuscatedName);
+//
+//                        break;
+//                    }
+//                }
+//                if(duplicated) continue;
+
+                deobfuscatedName = deobfuscatedName + "NMS";
 
                 if (Modifier.isAbstract(method.access) || Modifier.isStatic(method.access)) continue;
 
@@ -59,12 +89,10 @@ public class ClassTransformer {
                 int index = 1;
                 for (TypeDescriptor desc : entry.getDesc().getArgumentDescs()) {
                     Type type = Type.getType(desc.toString());
-                    System.out.println(type.getClassName() + " " + desc);
                     methodNode.visitVarInsn(type.getOpcode(Opcodes.ILOAD), index);
                     index=index+type.getSize();
                 }
 
-                System.out.println("desc: " + method.desc);
                 methodNode.visitMethodInsn(Opcodes.INVOKEVIRTUAL, classNode.name, method.name, method.desc, false);
 
                 Type returnType = Type.getType(entry.getDesc().getReturnDesc().toString());
@@ -77,7 +105,6 @@ public class ClassTransformer {
                 index = 1;
                 for (TypeDescriptor desc : entry.getDesc().getArgumentDescs()) {
                     Type type = Type.getType(desc.toString());
-                    System.out.println(type.getClassName() + " " + desc);
                     methodNode.visitLocalVariable("var"+(index-1), type.getDescriptor(), null, label1, label3, index);
                     index++;
                 }
@@ -87,6 +114,8 @@ public class ClassTransformer {
                 modifyed = true;
                 System.out.println("+ " + id + " -> " + deobfuscatedName);
 
+            }else {
+                System.out.println("ignore Method: " + id);
             }
         }
 
@@ -109,7 +138,9 @@ public class ClassTransformer {
             e.printStackTrace();
         }
 
-        dataOutputStream.write(classWriter.toByteArray());
+        byte[] data = classWriter.toByteArray();
+        dataOutputStream.write(data);
+        ressource.setData(data);
 
 //        PrintWriter pw = new PrintWriter(System.out);
 //        CheckClassAdapter.verify(new jdk.internal.org.objectweb.asm.ClassReader(classWriter.toByteArray()), true, pw);

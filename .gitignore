@@ -103,6 +103,7 @@ buildNumber.properties
 
 test/
 server.jar
+mojang_server.jar
 server1_16_3.txt
 bukkit-1.16.3-class.csrg
 

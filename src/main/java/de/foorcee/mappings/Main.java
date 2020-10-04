@@ -6,6 +6,7 @@ import org.apache.commons.io.FileUtils;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
 import java.util.Scanner;
 
 public class Main {
@@ -14,13 +15,14 @@ public class Main {
         File outputDir = new File("test/");
         if(outputDir.exists()) FileUtils.deleteDirectory(outputDir);
         MojangMappings.load();
-        for (Ressource ressource : ServerFileReader.load()) {
+        List<Ressource> ressources = ServerFileReader.load();
+        for (Ressource ressource : ressources) {
             if(ressource.isMinecraftServer() && ressource.isClassFile()){
-                System.out.println(ressource.getSimpleName());
                 ClassTransformer transformer = new ClassTransformer(ressource, MojangMappings.classMethodList.get(ressource.getSimpleName()));
-
             }
         }
+
+        ServerFileSaver.save(ressources);
     }
 
 }
