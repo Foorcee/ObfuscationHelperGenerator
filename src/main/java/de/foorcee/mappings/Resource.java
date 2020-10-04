@@ -6,19 +6,19 @@ import lombok.Setter;
 
 @AllArgsConstructor
 @Getter
-public class Ressource {
-    private String fileName;
-    private String internalName;
+public class Resource {
+    private final String fileName;
+    private final String internalName;
     @Setter
     private byte[] data;
-    private boolean classFile;
+    private final boolean classFile;
 
-    public boolean isMinecraftServer(){
+    public boolean isMinecraftServer() {
         return fileName.startsWith("net/minecraft/server/v1_16_R2/");
     }
 
-    public String getSimpleName(){
+    public String getSimpleName() {
         int index = internalName.lastIndexOf("/");
-        return internalName.substring(index +1);
+        return internalName.substring(index + 1);
     }
 }
