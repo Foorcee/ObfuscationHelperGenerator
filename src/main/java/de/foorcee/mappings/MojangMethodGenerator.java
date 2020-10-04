@@ -5,11 +5,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 
 import java.io.*;
+import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLConnection;
+import java.nio.file.Files;
+import java.nio.file.OpenOption;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Properties;
 import java.util.Scanner;
+import java.util.jar.JarInputStream;
 
 @Slf4j(topic = "MojangServerGenerator")
 public class MojangMethodGenerator {
@@ -173,6 +178,46 @@ public class MojangMethodGenerator {
         } catch (IOException e) {
             log.error("Download failed from " + url, e);
             return false;
+        }
+    }
+
+    public void startServer(String[] args){
+        Path paperFile = mojangPaperFile.toPath();
+        String main = getMainClass(paperFile);
+        Method mainMethod = getMainMethod(paperFile, main);
+        try {
+            mainMethod.invoke(null, new Object[] { args });
+        } catch (IllegalAccessException|java.lang.reflect.InvocationTargetException e) {
+            System.err.println("Error while running patched jar");
+            e.printStackTrace();
+            System.exit(1);
+        }
+    }
+
+
+
+    private String getMainClass(Path paperJar) {
+        try(InputStream is = new BufferedInputStream(Files.newInputStream(paperJar, new OpenOption[0]));
+            JarInputStream js = new JarInputStream(is)) {
+            return js.getManifest().getMainAttributes().getValue("Main-Class");
+        } catch (IOException e) {
+            System.err.println("Error reading from patched jar");
+            e.printStackTrace();
+            System.exit(1);
+            throw new InternalError();
+        }
+    }
+
+    private Method getMainMethod(Path paperJar, String mainClass) {
+        Agent.addToClassPath(paperJar);
+        try {
+            Class<?> cls = Class.forName(mainClass, true, ClassLoader.getSystemClassLoader());
+            return cls.getMethod("main", new Class[] { String[].class });
+        } catch (NoSuchMethodException|ClassNotFoundException e) {
+            System.err.println("Failed to find main method in patched jar");
+            e.printStackTrace();
+            System.exit(1);
+            throw new InternalError();
         }
     }
 }
