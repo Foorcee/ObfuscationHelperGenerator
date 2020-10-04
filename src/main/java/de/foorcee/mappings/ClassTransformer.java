@@ -1,14 +1,14 @@
 package de.foorcee.mappings;
 
-import com.sun.org.apache.bcel.internal.generic.ALOAD;
-import com.sun.org.apache.bcel.internal.generic.ILOAD;
 import cuchaz.enigma.translation.mapping.EntryMapping;
 import cuchaz.enigma.translation.mapping.tree.EntryTreeNode;
 import cuchaz.enigma.translation.representation.TypeDescriptor;
 import cuchaz.enigma.translation.representation.entry.MethodEntry;
-import jdk.internal.org.objectweb.asm.util.CheckClassAdapter;
+import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import org.objectweb.asm.*;
 import org.objectweb.asm.tree.*;
+import org.objectweb.asm.util.CheckClassAdapter;
 
 import java.io.*;
 import java.lang.reflect.Modifier;
@@ -16,40 +16,62 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
+@Slf4j
 public class ClassTransformer {
 
-    private Map<String, EntryTreeNode<EntryMapping>> mappings = new HashMap<>();
+    private final Map<String, EntryTreeNode<EntryMapping>> mappings = new HashMap<>();
+    private final Resource resource;
+    @Getter
+    private boolean modified = false;
 
-    public ClassTransformer(Ressource ressource, List<EntryTreeNode<EntryMapping>> list) throws IOException {
-
+    public ClassTransformer(Resource resource, List<EntryTreeNode<EntryMapping>> list) {
+        this.resource = resource;
         if (list == null) return;
+
+        Function<String, String> remapFunction = s -> {
+            String remap = MojangMappings.mojangToBukkitClassNames.get(s);
+            if (remap == null) {
+                log.debug("Mapping from the class " + s + " is not available");
+                return s;
+            }
+            return "net/minecraft/server/v1_16_R2/" + remap;
+        };
+
         for (EntryTreeNode<EntryMapping> node : list) {
             MethodEntry entry = (MethodEntry) node.getEntry();
-            String id = entry.getName() + entry.getDesc();
+            entry.getDesc().getReturnDesc().remap(remapFunction);
+            entry.getDesc().getArgumentDescs().forEach(typeDescriptor -> typeDescriptor.remap(remapFunction));
+            String remappedDesc = entry.getDesc().remap(remapFunction).toString();
+            String id = entry.getName() + remappedDesc;
+            log.debug("Load id: " + id);
             mappings.put(id, node);
         }
+    }
 
+
+    public int addMojangMethods() throws IOException {
         ClassWriter classWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS);
         ClassNode classNode = new ClassNode();
-        ClassReader reader = new ClassReader(ressource.getData());
+        ClassReader reader = new ClassReader(resource.getData());
         reader.accept(classNode, 0);
 
-        boolean modifyed = false;
+        int methodCount = 0;
         for (Object object : new ArrayList<>(classNode.methods)) {
             MethodNode method = (MethodNode) object;
             String id = method.name + method.desc;
             EntryTreeNode<EntryMapping> node = mappings.get(id);
             if (node != null) {
                 MethodEntry entry = (MethodEntry) node.getEntry();
-                String deobfuscatedName = node.getValue().getTargetName();
-                if (method.name.equals(deobfuscatedName)) continue;
+                String deobfuscationName = node.getValue().getTargetName();
+                if (method.name.equals(deobfuscationName)) continue;
 
-                if(entry.getDesc().getArgumentDescs().isEmpty()) continue;
+                deobfuscationName = deobfuscationName + "NMS";
 
                 if (Modifier.isAbstract(method.access) || Modifier.isStatic(method.access)) continue;
 
-                MethodVisitor methodNode = classNode.visitMethod(method.access, deobfuscatedName, method.desc, method.signature, method.exceptions.toArray(new String[0]));
+                MethodVisitor methodNode = classNode.visitMethod(method.access, deobfuscationName, method.desc, method.signature, method.exceptions.toArray(new String[0]));
                 methodNode.visitCode();
 
                 Label label1 = new Label();
@@ -59,12 +81,10 @@ public class ClassTransformer {
                 int index = 1;
                 for (TypeDescriptor desc : entry.getDesc().getArgumentDescs()) {
                     Type type = Type.getType(desc.toString());
-                    System.out.println(type.getClassName() + " " + desc);
                     methodNode.visitVarInsn(type.getOpcode(Opcodes.ILOAD), index);
-                    index=index+type.getSize();
+                    index = index + type.getSize();
                 }
 
-                System.out.println("desc: " + method.desc);
                 methodNode.visitMethodInsn(Opcodes.INVOKEVIRTUAL, classNode.name, method.name, method.desc, false);
 
                 Type returnType = Type.getType(entry.getDesc().getReturnDesc().toString());
@@ -77,42 +97,44 @@ public class ClassTransformer {
                 index = 1;
                 for (TypeDescriptor desc : entry.getDesc().getArgumentDescs()) {
                     Type type = Type.getType(desc.toString());
-                    System.out.println(type.getClassName() + " " + desc);
-                    methodNode.visitLocalVariable("var"+(index-1), type.getDescriptor(), null, label1, label3, index);
+                    methodNode.visitLocalVariable("var" + (index - 1), type.getDescriptor(), null, label1, label3, index);
                     index++;
                 }
                 methodNode.visitMaxs(-1, -1);
                 methodNode.visitEnd();
 
-                modifyed = true;
-                System.out.println("+ " + id + " -> " + deobfuscatedName);
+                methodCount++;
+                modified = true;
+                log.debug("+ " + id + " -> " + deobfuscationName);
 
+            } else {
+                log.debug("Ignore method " + id);
             }
         }
 
-        if (!modifyed) return;
+        if (!modified) return methodCount;
 
         classNode.accept(classWriter);
-        File outputDir = new File("test/");
-        File file = new File(outputDir, ressource.getSimpleName() + ".class");
-        if (file.exists()) file.delete();
 
-        outputDir.mkdirs();
+        byte[] data = classWriter.toByteArray();
 
-        DataOutputStream dataOutputStream =
-                null;
-        try {
-            dataOutputStream = new DataOutputStream(
-                    new FileOutputStream(
-                            file));
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
+        if (Main.debug) {
+            File outputDir = new File("debug/");
+            File file = new File(outputDir, this.resource.getSimpleName() + ".class");
+            if (file.exists()) file.delete();
+
+            outputDir.mkdirs();
+
+            try (DataOutputStream dataOutputStream = new DataOutputStream(new FileOutputStream(file))) {
+                dataOutputStream.write(data);
+            }
+
         }
+        resource.setData(data);
+        return methodCount;
+    }
 
-        dataOutputStream.write(classWriter.toByteArray());
-
-//        PrintWriter pw = new PrintWriter(System.out);
-//        CheckClassAdapter.verify(new jdk.internal.org.objectweb.asm.ClassReader(classWriter.toByteArray()), true, pw);
-        //return classWriter.toByteArray();
+    public void verify(PrintWriter printWriter) {
+        CheckClassAdapter.verify(new ClassReader(resource.getData()), true, printWriter);
     }
 }

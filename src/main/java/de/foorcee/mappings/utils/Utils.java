@@ -1,4 +1,4 @@
-package de.foorcee.mappings.data.mojang;
+package de.foorcee.mappings.utils;
 
 public class Utils {
 
