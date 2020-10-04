@@ -14,8 +14,7 @@ jobs:
           java-version: 1.8
       - name: Build with Maven
         run: mvn clean install --file pom.xml
-      - run: mkdir staging && cp target/*.jar staging
       - uses: actions/upload-artifact@v2
         with:
-          name: Package
-          path: staging
+          name: MojangPaperServer-1.0
+          path: target/MojangPaperServer-1.0.jar
